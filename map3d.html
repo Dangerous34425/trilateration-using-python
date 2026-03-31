@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <title>Trilateration 3D</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+  <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Segoe UI',sans-serif; background:#0a0e1a; }
+    #map { width:100vw; height:100vh; }
+
+    #legend {
+      position:absolute; top:16px; left:16px; z-index:100;
+      background:rgba(10,14,26,.88);
+      border:1px solid rgba(255,255,255,.15);
+      border-radius:12px;
+      padding:14px 18px;
+      color:#eee;
+      font-size:12.5px;
+      line-height:2;
+      backdrop-filter:blur(10px);
+      box-shadow:0 4px 24px rgba(0,0,0,.6);
+      min-width:210px;
+    }
+    #legend h3 {
+      font-size:14px; font-weight:700;
+      margin-bottom:6px;
+      color:#fff;
+      letter-spacing:.5px;
+    }
+    .row { display:flex; align-items:center; gap:8px; }
+    .dot {
+      width:13px; height:13px; border-radius:50%;
+      border:2px solid rgba(255,255,255,.4);
+      flex-shrink:0;
+    }
+
+    #info {
+      position:absolute; bottom:24px; left:50%; transform:translateX(-50%);
+      background:rgba(10,14,26,.88);
+      border:1px solid rgba(255,255,255,.15);
+      border-radius:12px;
+      padding:12px 24px;
+      color:#eee;
+      font-size:13px;
+      text-align:center;
+      backdrop-filter:blur(10px);
+      box-shadow:0 4px 24px rgba(0,0,0,.6);
+    }
+    #info strong { color:#2ecc71; font-size:16px; }
+
+    .maplibregl-popup-content {
+      background:rgba(10,14,26,.95) !important;
+      color:#eee !important;
+      border-radius:10px !important;
+      border:1px solid rgba(255,255,255,.2) !important;
+      padding:12px 16px !important;
+      font-size:13px !important;
+      line-height:1.7 !important;
+      box-shadow:0 4px 20px rgba(0,0,0,.7) !important;
+    }
+    .maplibregl-popup-tip { display:none; }
+    .maplibregl-popup-close-button { color:#aaa !important; font-size:18px !important; }
+
+    .marker-pulse {
+      width:20px; height:20px;
+      border-radius:50%;
+      cursor:pointer;
+      position:relative;
+    }
+    .marker-pulse::after {
+      content:'';
+      position:absolute;
+      top:-6px; left:-6px;
+      width:32px; height:32px;
+      border-radius:50%;
+      animation:pulse 2s ease-out infinite;
+    }
+    @keyframes pulse {
+      0%   { transform:scale(.7); opacity:.8; }
+      100% { transform:scale(1.8); opacity:0; }
+    }
+  </style>
+</head>
+<body>
+<div id="map"></div>
+
+<div id="legend">
+  <h3>📡 Trilateration 3D</h3>
+  <div class="row"><span class="dot" style="background:#27ae60"></span>Wynik trilateracji</div>
+  <div class="row"><span class="dot" style="background:#3498db"></span>Punkt referencyjny</div>
+  <div class="row"><span class="dot" style="background:#e74c3c"></span>Plus LTE (eNB 794128)</div>
+  <div class="row"><span class="dot" style="background:#e67e22"></span>T-Mobile LTE (eNB 271089)</div>
+  <div class="row"><span class="dot" style="background:#f1c40f"></span>Orange LTE (eNB 170956)</div>
+  <div class="row"><span class="dot" style="background:#e67e22;opacity:.6"></span>Orange LTE 2 (eNB 170956)</div>
+  <div class="row"><span class="dot" style="background:#9b59b6"></span>WCDMA (eNB 870622)</div>
+</div>
+
+<div id="info">
+  Wynik trilateracji: <strong>52.2259608°N, 16.5315942°E</strong>
+  &nbsp;|&nbsp; dokładność: ~9 m
+  &nbsp;|&nbsp; 5 stacji bazowych
+  &nbsp;|&nbsp; <span id="cdate" style="color:#f39c12"></span>
+  &nbsp;<span id="ctime" style="color:#2ecc71; font-weight:bold; font-family:monospace; font-size:15px"></span>
+</div>
+
+<script>
+const map = new maplibregl.Map({
+  container: 'map',
+  style: 'https://tiles.openfreemap.org/styles/dark',
+  center: [16.5315942, 52.2259608],
+  zoom: 11,
+  pitch: 55,
+  bearing: -20,
+  antialias: true
+});
+
+map.addControl(new maplibregl.NavigationControl());
+map.addControl(new maplibregl.ScaleControl());
+
+// ─── Dane ───────────────────────────────────────────────────────────────────
+const RESULT = [16.5315942, 52.2259608];
+const REF    = [16.5315942, 52.2259608];
+
+const towers = [
+  { coords:[16.53845091245, 52.21139507341], color:'#e74c3c', pulse:'#e74c3c',
+    label:'Plus LTE',    note:'LAC: 31101 | CID: 203296926<br>eNodeB: <b>794128</b> | sektor: 158<br>~1.70 km od ref.' },
+  { coords:[16.68999083223, 52.27889629598], color:'#e67e22', pulse:'#e67e22',
+    label:'T-Mobile LTE',note:'LAC: 57144 | CID: 69398801<br>eNodeB: <b>271089</b> | sektor: 17<br>~12.43 km od ref.' },
+  { coords:[16.47773162519, 52.26348956415], color:'#f1c40f', pulse:'#f1c40f',
+    label:'Orange LTE',  note:'LAC: 57144 | CID: 43764761<br>eNodeB: <b>170956</b> | sektor: 25<br>~5.49 km od ref.' },
+  { coords:[16.46894834758, 52.33082446749], color:'#e88e00', pulse:'#e88e00',
+    label:'Orange LTE 2',note:'LAC: 57144 | CID: 43764791<br>eNodeB: <b>170956</b> | sektor: 55<br>~12.40 km od ref.' },
+  { coords:[16.667728722,   52.24836401903], color:'#9b59b6', pulse:'#9b59b6',
+    label:'WCDMA',        note:'LAC: 31961 | CID: 222879381<br>eNodeB: <b>870622</b> | sektor: 149<br>~9.75 km od ref.' },
+];
+
+// ─── Pomocnicze: marker z pulsem ─────────────────────────────────────────────
+function addMarker(lngLat, color, size, popupHtml) {
+  const el = document.createElement('div');
+  el.className = 'marker-pulse';
+  el.style.width  = size + 'px';
+  el.style.height = size + 'px';
+  el.style.background = color;
+  el.style.borderRadius = '50%';
+  el.style.border = '2.5px solid rgba(255,255,255,.7)';
+  el.style.boxShadow = `0 0 14px ${color}99`;
+  el.style.cursor = 'pointer';
+  el.style.position = 'relative';
+
+  const ring = document.createElement('div');
+  ring.style.cssText = `
+    position:absolute;
+    top:${-size*0.4}px; left:${-size*0.4}px;
+    width:${size*1.8}px; height:${size*1.8}px;
+    border-radius:50%;
+    border:2px solid ${color};
+    animation:pulse 2s ease-out infinite;
+    pointer-events:none;
+  `;
+  el.appendChild(ring);
+
+  const popup = new maplibregl.Popup({ offset:20, closeButton:true })
+    .setHTML(popupHtml);
+
+  new maplibregl.Marker({ element: el })
+    .setLngLat(lngLat)
+    .setPopup(popup)
+    .addTo(map);
+}
+
+// ─── Po załadowaniu stylu ──────────────────────────────────────────────────
+map.on('load', () => {
+
+  // 3D Buildings — wykryj źródło dynamicznie (działa z każdym stylem OpenMapTiles)
+  const style = map.getStyle();
+  const bldLayer = style.layers.find(l => l['source-layer'] === 'building');
+  if (bldLayer) {
+    const bldSource = bldLayer.source;
+    // usuń 2D budynki żeby 3D nie nakładało się
+    style.layers
+      .filter(l => l['source-layer'] === 'building')
+      .forEach(l => { try { map.removeLayer(l.id); } catch(e){} });
+
+    map.addLayer({
+      id: '3d-buildings',
+      source: bldSource,
+      'source-layer': 'building',
+      type: 'fill-extrusion',
+      minzoom: 14,
+      paint: {
+        'fill-extrusion-color': [
+          'interpolate', ['linear'], ['zoom'],
+          14, '#1a2540',
+          17, '#243560'
+        ],
+        'fill-extrusion-height': [
+          'interpolate', ['linear'], ['zoom'],
+          14, 0,
+          16, ['coalesce', ['get','render_height'], ['get','height'], 10]
+        ],
+        'fill-extrusion-base': [
+          'interpolate', ['linear'], ['zoom'],
+          14, 0,
+          16, ['coalesce', ['get','render_min_height'], ['get','min_height'], 0]
+        ],
+        'fill-extrusion-opacity': 0.85
+      }
+    });
+  }
+
+  // Linie z trilateracji do każdego masztu
+  const lineFeatures = towers.map(t => ({
+    type: 'Feature',
+    geometry: {
+      type: 'LineString',
+      coordinates: [RESULT, t.coords]
+    },
+    properties: { color: t.color }
+  }));
+
+  map.addSource('lines', {
+    type: 'geojson',
+    data: { type: 'FeatureCollection', features: lineFeatures }
+  });
+
+  map.addLayer({
+    id: 'trilateration-lines',
+    type: 'line',
+    source: 'lines',
+    paint: {
+      'line-color': ['get', 'color'],
+      'line-width': 1.8,
+      'line-opacity': 0.55,
+      'line-dasharray': [4, 3]
+    }
+  });
+
+  // Markery masztów
+  towers.forEach(t => {
+    addMarker(
+      t.coords, t.color, 16,
+      `<b style="color:${t.color}">${t.label}</b><br>${t.note}`
+    );
+  });
+
+  // Punkt referencyjny
+  addMarker(
+    REF, '#3498db', 18,
+    `<b style="color:#3498db">📌 Punkt referencyjny</b><br>52.2259608°N, 16.5315942°E`
+  );
+
+  // Wynik trilateracji — większy, pulsujący zielony
+  const resultEl = document.createElement('div');
+  resultEl.innerHTML = `
+    <div style="
+      width:28px; height:28px; background:#27ae60;
+      border-radius:50%; border:3px solid #fff;
+      box-shadow:0 0 20px #27ae60cc;
+      display:flex; align-items:center; justify-content:center;
+      font-size:14px; cursor:pointer; position:relative;
+    ">📍
+      <div style="
+        position:absolute; top:-8px; left:-8px;
+        width:44px; height:44px; border-radius:50%;
+        border:2px solid #27ae6099;
+        animation:pulse 1.5s ease-out infinite;
+        pointer-events:none;
+      "></div>
+    </div>`;
+
+  const resultPopup = new maplibregl.Popup({ offset:25 })
+    .setHTML(`
+      <b style="color:#27ae60">✅ Wynik trilateracji</b><br>
+      <b>52.2259608°N, 16.5315942°E</b><br>
+      dokładność: ~9 m od punktu ref.<br>
+      algorytm: Nelder-Mead<br>
+      stacji: 5
+    `);
+
+  new maplibregl.Marker({ element: resultEl })
+    .setLngLat(RESULT)
+    .setPopup(resultPopup)
+    .addTo(map);
+
+  // Animacja lotu kamery — najpierw szeroko, potem zoom na punkt trilateracji z budynkami
+  setTimeout(() => {
+    map.flyTo({
+      center: [16.58, 52.265],
+      zoom: 9.5,
+      pitch: 50,
+      bearing: 15,
+      duration: 3000,
+      essential: true
+    });
+  }, 800);
+
+  // Po przelocie — zoom in na wynik żeby pokazać budynki 3D
+  setTimeout(() => {
+    map.flyTo({
+      center: RESULT,
+      zoom: 15.5,
+      pitch: 65,
+      bearing: -30,
+      duration: 4000,
+      essential: true
+    });
+  }, 4500);
+});
+
+function updateClock() {
+  const now = new Date();
+  document.getElementById('cdate').textContent =
+    now.toLocaleDateString('pl-PL', { weekday:'short', year:'numeric', month:'2-digit', day:'2-digit' });
+  document.getElementById('ctime').textContent =
+    now.toLocaleTimeString('pl-PL', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+}
+updateClock();
+setInterval(updateClock, 1000);
+</script>
+</body>
+</html>

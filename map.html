@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <title>Trilateration – Leaflet + OSM</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:sans-serif; }
+    #map { width:100vw; height:100vh; }
+    #legend {
+      position:absolute; top:12px; left:50px; z-index:1000;
+      background:rgba(255,255,255,.93); border-radius:8px;
+      padding:10px 14px; font-size:12px; line-height:1.9;
+      box-shadow:0 2px 10px rgba(0,0,0,.3); max-width:220px;
+    }
+    #legend h3 { font-size:13px; margin-bottom:5px; }
+    .dot { display:inline-block; width:11px; height:11px; border-radius:50%; margin-right:5px; vertical-align:middle; }
+    #clock {
+      position:absolute; top:12px; right:12px; z-index:1000;
+      background:rgba(255,255,255,.93); border-radius:8px;
+      padding:8px 14px; font-size:13px; line-height:1.6;
+      box-shadow:0 2px 10px rgba(0,0,0,.3);
+      text-align:right; font-family:monospace;
+    }
+    #clock .date { font-weight:bold; font-size:14px; }
+    #clock .time { color:#2980b9; font-size:18px; font-weight:bold; }
+  </style>
+</head>
+<body>
+<div id="map"></div>
+<div id="clock">
+  <div class="date" id="cdate"></div>
+  <div class="time" id="ctime"></div>
+</div>
+<div id="legend">
+  <h3>Trilateration Map</h3>
+  <span class="dot" style="background:#2980b9"></span>Punkt ref.<br>
+  <span class="dot" style="background:#27ae60"></span>Trilateracja<br>
+  <span class="dot" style="background:#e74c3c"></span>Plus LTE<br>
+  <span class="dot" style="background:#e67e22"></span>T-Mobile LTE<br>
+  <span class="dot" style="background:#f39c12"></span>Orange LTE<br>
+  <span class="dot" style="background:#d35400"></span>Orange LTE 2<br>
+  <span class="dot" style="background:#9b59b6"></span>WCDMA<br>
+</div>
+<script>
+const map = L.map('map').setView([52.2259608, 16.5315942], 12);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+  maxZoom: 19
+}).addTo(map);
+
+function makeIcon(color, size) {
+  return L.divIcon({
+    className: '',
+    html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${color};border:2.5px solid #fff;box-shadow:0 0 8px rgba(0,0,0,.5);"></div>`,
+    iconSize: [size, size],
+    iconAnchor: [size/2, size/2]
+  });
+}
+
+const points = [
+  {
+    lat: 52.21139507341, lon: 16.53845091245,
+    color: "#e74c3c", size: 16,
+    title: "<b>Plus LTE</b><br>LAC: 31101 | CID: 203296926<br>eNodeB: 794128 | sek: 158<br>~1.70 km od ref."
+  },
+  {
+    lat: 52.27889629598, lon: 16.68999083223,
+    color: "#e67e22", size: 16,
+    title: "<b>T-Mobile LTE</b><br>LAC: 57144 | CID: 69398801<br>eNodeB: 271089 | sek: 17<br>~12.43 km od ref."
+  },
+  {
+    lat: 52.26348956415, lon: 16.47773162519,
+    color: "#f39c12", size: 16,
+    title: "<b>Orange LTE</b><br>LAC: 57144 | CID: 43764761<br>eNodeB: 170956 | sek: 25<br>~5.49 km od ref."
+  },
+  {
+    lat: 52.33082446749, lon: 16.46894834758,
+    color: "#d35400", size: 16,
+    title: "<b>Orange LTE 2</b><br>LAC: 57144 | CID: 43764791<br>eNodeB: 170956 | sek: 55<br>~12.40 km od ref."
+  },
+  {
+    lat: 52.24836401903, lon: 16.667728722,
+    color: "#9b59b6", size: 16,
+    title: "<b>WCDMA</b><br>LAC: 31961 | CID: 222879381<br>eNodeB: 870622 | sek: 149<br>~9.75 km od ref."
+  },
+  {
+    lat: 52.2259608, lon: 16.5315942,
+    color: "#2980b9", size: 20,
+    title: "<b>Punkt referencyjny</b><br>52.2259608, 16.5315942"
+  },
+  {
+    lat: 52.2259608, lon: 16.5315942,
+    color: "#27ae60", size: 22,
+    title: "<b>&#9989; Wynik trilateracji</b><br>52.2259608, 16.5315942"
+  }
+];
+
+points.forEach(p => {
+  L.marker([p.lat, p.lon], { icon: makeIcon(p.color, p.size) })
+    .addTo(map)
+    .bindPopup(p.title);
+});
+
+function updateClock() {
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('pl-PL', { weekday:'short', year:'numeric', month:'2-digit', day:'2-digit' });
+  const timeStr = now.toLocaleTimeString('pl-PL', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+  document.getElementById('cdate').textContent = dateStr;
+  document.getElementById('ctime').textContent = timeStr;
+}
+updateClock();
+setInterval(updateClock, 1000);
+</script>
+</body>
+</html>
